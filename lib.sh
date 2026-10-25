@@ -85,8 +85,29 @@ sy_hmac() {
         python3 -c 'import hmac, hashlib, os, sys; print(hmac.new(os.environ["SHIPYARD_SECRET"].encode(), sys.stdin.buffer.read(), hashlib.sha256).hexdigest())'
     elif command -v node >/dev/null 2>&1; then
         node -e 'const c=require("crypto");let d=[];process.stdin.on("data",x=>d.push(x)).on("end",()=>console.log(c.createHmac("sha256",process.env.SHIPYARD_SECRET).update(Buffer.concat(d)).digest("hex")))'
+    elif sy_java=$(sy_jdk_tool java); then
+        # Runners built on the stock Pterodactyl images have a JDK but neither python3 nor node.
+        sy_hdir=$(mktemp -d) || return 1
+        printf '%s
+' 'public class ShipyardHmac { public static void main(String[] a) throws Exception {'             'javax.crypto.Mac m = javax.crypto.Mac.getInstance("HmacSHA256");'             'm.init(new javax.crypto.spec.SecretKeySpec(System.getenv("SHIPYARD_SECRET").getBytes("UTF-8"), "HmacSHA256"));'             'StringBuilder s = new StringBuilder(); for (byte b : m.doFinal(System.in.readAllBytes())) s.append(String.format("%02x", b));'             'System.out.println(s); } }' >"$sy_hdir/ShipyardHmac.java"
+        "$sy_java" "$sy_hdir/ShipyardHmac.java"
+        sy_hcode=$?
+        rm -rf "$sy_hdir"
+        return "$sy_hcode"
     else
-        echo 'shipyard: needs python3 or node to sign uploads without exposing the secret' >&2
+        echo 'shipyard: needs python3, node or a JDK to sign uploads without exposing the secret' >&2
+        return 1
+    fi
+}
+
+# Path of a JDK tool ($1: java or jar) from PATH or $JAVA_HOME; fails when there is none.
+sy_jdk_tool() {
+    if command -v "$1" >/dev/null 2>&1; then
+        command -v "$1"
+    elif [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/$1" ]; then
+        printf '%s
+' "$JAVA_HOME/bin/$1"
+    else
         return 1
     fi
 }

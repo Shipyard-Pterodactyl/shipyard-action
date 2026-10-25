@@ -116,8 +116,12 @@ stamp() {
         (cd "$WORK/stamp" && zip -q "$out" META-INF/shipyard-build.json)
     elif command -v python3 >/dev/null 2>&1; then
         sy_stamp_python "$out" "$WORK/stamp/META-INF/shipyard-build.json"
+    elif jar=$(sy_jdk_tool jar); then
+        # The stock Pterodactyl images (managed runners) have a JDK but neither zip nor python3.
+        # jar u replaces an entry of the same name.
+        "$jar" uf "$out" -C "$WORK/stamp" META-INF/shipyard-build.json
     else
-        echo 'shipyard: needs zip or python3 to stamp archives (or set stamp: false)' >&2
+        echo 'shipyard: needs zip, python3 or a JDK (jar) to stamp archives (or set stamp: false)' >&2
         return 1
     fi
 }
